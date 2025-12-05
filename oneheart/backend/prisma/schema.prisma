@@ -1,0 +1,243 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String  @id @default(uuid())
+  did       String  @unique
+  email     String?
+  createdAt DateTime @default(now())
+  proofs    Proof[]
+}
+
+model Proof {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  questId        String?
+  title          String
+  description    String?
+  status         String    @default("submitted")
+  impactCategory String?
+  createdAt      DateTime  @default(now())
+  evidences      Evidence[]
+  verifications  Verification[]
+  impact         ImpactScore?
+  witnesses      Witness[]
+}
+
+model Evidence {
+  id         String   @id @default(uuid())
+  proofId    String
+  proof      Proof    @relation(fields: [proofId], references: [id])
+  type       String
+  url        String
+  metadata   Json?
+  hash       String
+  createdAt  DateTime @default(now())
+}
+
+model Verification {
+  id          String   @id @default(uuid())
+  proofId     String
+  proof       Proof    @relation(fields: [proofId], references: [id])
+  verifierId  String?
+  method      String
+  passed      Boolean?
+  confidence  Float?
+  reason      String?
+  createdAt   DateTime @default(now())
+}
+
+model ImpactScore {
+  id             String   @id @default(uuid())
+  proofId        String   @unique
+  proof          Proof    @relation(fields: [proofId], references: [id])
+  impactPoints   Float
+  breakdown      Json?
+  calculatedAt   DateTime @default(now())
+}
+
+model Witness {
+  id           String   @id @default(uuid())
+  proofId      String
+  proof        Proof    @relation(fields: [proofId], references: [id])
+  witnessId    String
+  confirmed    Boolean?
+  comment      String?
+  createdAt    DateTime @default(now())
+}
+
+// ============================================
+// PILOT MVP SCHEMA
+// ============================================
+
+model Player {
+  id            String   @id @default(uuid())
+  name          String
+  level         Int      @default(1)
+  stats         Json?    // { strength, wisdom, courage, compassion, etc }
+  alignment     String?  // dharmic alignment: "service", "growth", "community", "wisdom"
+  xpTotal       Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  quests        PlayerQuest[]
+  impacts       ImpactLog[]
+  tokens        TokenLedger[]
+  proofs        Proof[]   @relation("PlayerProofs")
+}
+
+model Quest {
+  id            String   @id @default(uuid())
+  title         String
+  category      String   // "cleanup", "training", "cultural", "research", "sports"
+  difficulty    Int      // 1-5
+  description   String?
+  baseXp        Int?
+  baseTokens    Int?
+  regionId      String?  // zone_id
+  requirements  Json?    // { minLevel, skills, etc }
+  createdAt     DateTime @default(now())
+  
+  players       PlayerQuest[]
+  impacts       ImpactLog[]
+}
+
+model PlayerQuest {
+  id            String   @id @default(uuid())
+  playerId      String
+  player        Player   @relation(fields: [playerId], references: [id])
+  questId       String
+  quest         Quest    @relation(fields: [questId], references: [id])
+  status        String   @default("available") // "available", "active", "completed", "failed"
+  proofUrl      String?  // URL of evidence/proof
+  score         Float?   // computed impact score
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+  
+  @@unique([playerId, questId])
+}
+
+model ImpactLog {
+  id            String   @id @default(uuid())
+  playerId      String
+  player        Player   @relation(fields: [playerId], references: [id])
+  questId       String
+  quest         Quest    @relation(fields: [questId], references: [id])
+  xpAwarded     Int
+  tokenAwarded  Int
+  impactValue   Float?   // impact credits
+  breakdown     Json?    // { zone: 0.5, national: 0.3, global: 0.2 }
+  timestamp     DateTime @default(now())
+}
+
+model TokenLedger {
+  id            String   @id @default(uuid())
+  playerId      String
+  player        Player   @relation(fields: [playerId], references: [id])
+  amount        Int
+  type          String   // "mint", "burn", "transfer", "redeem"
+  source        String?  // "quest_completion", "witness_reward", "helper_bonus", "marketplace_redeem"
+  transactionId String?  // idempotency key
+  timestamp     DateTime @default(now())
+}
+
+// ============================================
+// ENTERPRISE LAYER MODELS
+// ============================================
+
+model Stakeholder {
+  id                  String   @id @default(uuid())
+  name                String
+  type                String   // "citizen", "government", "tourism", "sponsor", "research"
+  tier                String   // "bronze", "silver", "gold", "platinum"
+  contactEmail        String
+  region              String
+  verificationStatus  String   // "pending", "verified", "rejected"
+  verificationData    Json?
+  createdAt           DateTime @default(now())
+  
+  domains             BusinessDomain[]
+  revenue             StakeholderRevenue[]
+  partnerships        Partnership[]
+  tourismEntity       TourismEntity?
+}
+
+model BusinessDomain {
+  id                  String   @id @default(uuid())
+  name                String
+  description         String?
+  owner               String
+  stakeholder         Stakeholder @relation(fields: [owner], references: [id])
+  region              String
+  activeQuestsCount   Int      @default(0)
+  totalImpactValue    Float    @default(0)
+  revenueShare        Json     // { domain, national, global }
+  createdAt           DateTime @default(now())
+  
+  quests              Quest[]
+  budgets             GovernmentBudget[]
+}
+
+model StakeholderRevenue {
+  id                  String   @id @default(uuid())
+  stakeholderId       String
+  stakeholder         Stakeholder @relation(fields: [stakeholderId], references: [id])
+  amount              Float
+  source              String
+  domainId            String
+  timestamp           DateTime @default(now())
+}
+
+model Partnership {
+  id                  String   @id @default(uuid())
+  partnerId           String
+  stakeholder         Stakeholder @relation(fields: [partnerId], references: [id])
+  partnerType         String   // "NGO", "Government", "Corporate", "Tourism", "Research"
+  agreement           Json     // { questAllocation, revenueShare, commitmentPeriod, targetImpact }
+  startDate           DateTime
+  endDate             DateTime
+  status              String   // "active", "pending", "completed", "terminated"
+  createdAt           DateTime @default(now())
+}
+
+model GovernmentBudget {
+  id                  String   @id @default(uuid())
+  govtUnitId          String
+  domainId            String
+  domain              BusinessDomain @relation(fields: [domainId], references: [id])
+  amount              Float
+  spent               Float    @default(0)
+  fiscalYear          Int
+  allocatedDate       DateTime
+}
+
+model TourismEntity {
+  id                  String   @id @default(uuid())
+  stakeholderId       String   @unique
+  stakeholder         Stakeholder @relation(fields: [stakeholderId], references: [id])
+  entityType          String   // "hotel", "attraction", "guide", "restaurant"
+  location            Json     // { lat, lng, region }
+  verificationStatus  String   // "pending", "verified"
+  createdAt           DateTime @default(now())
+  
+  impacts             TourismImpact[]
+}
+
+model TourismImpact {
+  id                  String   @id @default(uuid())
+  tourismEntityId     String
+  tourismEntity       TourismEntity @relation(fields: [tourismEntityId], references: [id])
+  visitors            Int
+  revenue             Float
+  culturalValue       Float
+  recordDate          DateTime @default(now())
+}
+

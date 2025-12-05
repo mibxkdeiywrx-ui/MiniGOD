@@ -1,0 +1,32 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build
+dist/
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# Mobile / Expo
+android/
+ios/
+.expo/
+.expo-shared/
+.gradle/
+
+# Env
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Misc
+.idea/
